@@ -1,20 +1,20 @@
 # A lightweight ShinyApp for coding of text data for qualitative analysis
 # QualCA (pronounced like Quokka; not yet final)
 # Written by William Ngiam
-# Started on September 15, 2024
+# Started on Sept 15 2024
+# Version 0.0.2 (Oct 3 2024)
 #
 # Motivated by the ANTIQUES project
 #
 # Wishlist
 # Take in various corpus input files
-# Edit text viewer to show all relevant information - toggle menu to select what is shown
+# Edit text viewer to show all relevant information
 # Add codebook, codes, extracts - have all linked and viewable.
+# Apply specific colours for the code
 # Collaborative coding <- maybe a google sheet that contains code/extracts...
 # Floating menus?
 # Dealing with line breaks
 # Highlight extracts that are selected in the codebook
-# Different colours for each code
-# Accept .txt. files
 # 
 # Glossary
 # Corpus: The body of text to be qualitatively analysed
@@ -24,12 +24,15 @@
 # --- #
 
 # Load required packages
+library(tools)
 library(shiny)
 library(shinydashboard)
+library(shinyalert)
 library(shinyjs)
 library(DT) # for data presentation purposes
 library(tibble)
 library(dplyr) # for data wrangling
+library(readr)
 library(stringr) # for handling strings
 
 # Workaround for Chromium Issue 468227
@@ -42,26 +45,27 @@ downloadButton <- function(...) {
 
 ### UI ###
 ui <- dashboardPage(
-  dashboardHeader(title = "Qualitative Coding App"),
-  dashboardSidebar(
-    fluidPage(
-      HTML("<br>To use this app, upload your corpus CSV file using the button below. A menu will appear
+  dashboardHeader(title = "QualCA - Qualitative Coding App",
+                  titleWidth = 350),
+  dashboardSidebar(width = 350,
+                   fluidPage(
+                     HTML("<br>To use this app, upload your corpus CSV file using the button below. A menu will appear
               to select the column that contains the text to be coded.<br><br>
            If you are returning to the app, you may upload your previously saved codebook by uploading using the button below.<br><br>
            You may scroll through the documents by pressing the 'previous' and 'next' button, or typing in the numeric value into the bar.<br><br>
            To add an extract to the codebook, highlight the text in the document and press the 'Add Selected Text to Codebook' button. It will appear underneath
            the Extract column. You can then add a Code or Theme by double clicking on a cell within the codebook.<br><br>")),
-    fileInput("corpusFile", "Add Corpus CSV File",
-              accept = c("text/csv", "text/comma-separated-values,text/plain", ".csv")), # Upload the corpus of documents to-be-analysed
-    uiOutput("documentTextSelector"),
-    fileInput("codebookFile", "Add Codebook CSV File",
-              accept = c("text/csv", "text/comma-separated-values,text/plain", ".csv")), # Upload any existing codebook
-    uiOutput("codebookSelector"),
-    fluidPage("Download Codebook"),
-    fluidPage(downloadButton("downloadData",
-                             label = "Download Codebook")),
-    HTML("<br>"),
-    fluidPage("Created by William Ngiam")
+                   fileInput("corpusFile", "Add Corpus CSV File",
+                             accept = c("text/csv", "text/comma-separated-values,text/plain", ".csv")), # Upload the corpus of documents to-be-analysed
+                   uiOutput("documentTextSelector"),
+                   fileInput("codebookFile", "Add Codebook CSV File",
+                             accept = c("text/csv", "text/comma-separated-values,text/plain", ".csv")), # Upload any existing codebook
+                   uiOutput("codebookSelector"),
+                   fluidPage("Download Codebook"),
+                   fluidPage(downloadButton("downloadData",
+                                            label = "Download Codebook")),
+                   HTML("<br>"),
+                   fluidPage("Created by William Ngiam")
   ),
   dashboardBody(
     useShinyjs(),  # Initialize shinyjs
@@ -81,8 +85,8 @@ ui <- dashboardPage(
           bootstrapPage(
             tags$style(
               "#textDisplay {
-                    overflow: auto;
-                    max-height: 50vh;
+                    overflow-y: scroll;
+                    height: 40vh;
                 }"
             ),
             uiOutput("textDisplay"),
@@ -104,16 +108,17 @@ ui <- dashboardPage(
                           ')
           )),
       box(title = "Quick Look", width = 6, solidHeader = TRUE, status = "primary",
-          fluidPage(
-            DTOutput("counterTable")
+          fluidPage(DTOutput("counterTable")
           )
-      )
-      #box(title = "Themes", width = 3, solidHeader = TRUE, status = "primary")
+      ),
     ),
     fluidRow(
       box(title = "Codebook", width = 12, solidHeader = TRUE, status = "primary",
           actionButton("addSelectedText", "Add Selected Text as Extract"),
           actionButton("deleteExtract", "Delete Extract from Codebook"),
+          actionButton("addColumn", "Add Column to Codebook"),
+          actionButton("removeColumn", "Remove Column from Codebook"),
+          HTML("<br><br>"),
           DTOutput("codebookTable")))
   )
 )
@@ -141,8 +146,8 @@ server <- function(input, output, session) {
   updateTextDisplay <- function() {
     req(values$corpus, values$documentTextColumn)
     text <- values$corpus[[values$documentTextColumn]][values$currentDocumentIndex]
-    text <- sub("<span*/span>","",text) # Remove any leftover HTML
-    text <- gsub(pattern = "\n", replacement = " ", text) # Remove line breaks
+    #text <- sub("<span*/span>","",text) # Remove any leftover HTML
+    text <- gsub(pattern = "\n", replacement = "", text) # Remove line breaks because they "break" the app...
     
     # Add highlights here by adding HTML tags to text
     # Retrieve document ID
@@ -157,7 +162,7 @@ server <- function(input, output, session) {
       # Detect where extracts start and finish in text
       stringLocs <- as.data.frame(str_locate(text,paste0("\\Q",oldStrings,"\\E")))
       stringLocs <- na.omit(stringLocs) # omit NA where matches don't work with special characters
-      
+      addedStringStart = last(stringLocs$start)
       # Sort these locations by their starting order
       stringLocs <- stringLocs %>% 
         arrange(start)
@@ -177,7 +182,7 @@ server <- function(input, output, session) {
           # Check for overlap
           if (between(thisStringStart,
                       tail(reducedStrings, n = 1)$start,tail(reducedStrings, n = 1)$end)) {
-          # If overlap, change value of interval
+            # If overlap, change value of interval
             reducedStrings[nrow(reducedStrings),ncol(reducedStrings)] = max(thisStringEnd,tail(reducedStrings, n = 1)$end)
           }
           else {
@@ -197,14 +202,21 @@ server <- function(input, output, session) {
         stringEnd <- stringLocs$end[i]
         theString <- str_sub(text,stringStart,stringEnd)
         # Get string
-        str_sub(text,stringStart,stringEnd) <- paste0("<span style=\"background-color: powderblue\">",theString,"</span>")
+        if (stringStart == addedStringStart) {
+          str_sub(text,stringStart,stringEnd) <- paste0("<span id=\"lastString\" style=\"background-color: powderblue\">",theString,"</span>")
+        } else {
+          str_sub(text,stringStart,stringEnd) <- paste0("<span style=\"background-color: powderblue\">",theString,"</span>")
+        }
       }
     }
     
     # Hope it works
     output$textDisplay <- renderUI({
       tags$div(id = "textDisplay",
-               tags$p(HTML(text), id = "currentText", style = "font-size: 20px"))
+               tags$p(HTML(text), id = "currentText", style = "font-size: 20px"),
+               tags$script('
+                            lastString.scrollIntoView();
+                           '))
     })
   }
   
@@ -226,7 +238,7 @@ server <- function(input, output, session) {
   # Render codebook
   renderCodebook <- function() {
     output$codebookTable <- renderDT({
-      datatable(values$codebook, editable = TRUE, rownames = FALSE, options = list(order = list(3, 'desc')))
+      datatable(values$codebook, editable = TRUE, rownames = FALSE)
     })
   }
   
@@ -247,7 +259,11 @@ server <- function(input, output, session) {
   # Load corpus CSV file and update column selector
   observeEvent(input$corpusFile, {
     req(input$corpusFile)
-    values$corpus <- read.csv(input$corpusFile$datapath, stringsAsFactors = FALSE)
+    if (file_ext(input$corpusFile$datapath) == "csv") {
+      values$corpus <- read.csv(input$corpusFile$datapath, stringsAsFactors = FALSE)
+    } else if (file_ext(input$corpusFile$datapath) == "txt") {
+      values$corpus <- read.delim(input$corpusFile$datapath, header = FALSE, sep = "\n")
+    }
     colnames <- colnames(values$corpus)
     values$documentTextColumn <- colnames[1]  # Default to the first column
     values$currentDocumentIndex <- 1  # Reset index on new file load
@@ -350,12 +366,56 @@ server <- function(input, output, session) {
   # Delete extract from codebook
   observeEvent(input$deleteExtract, {
     req(input$codebookTable_rows_selected)
-    whichRow <- input$codebookTable_rows_selected # highlighed rows in codebook
+    whichRow <- input$codebookTable_rows_selected # highlighted rows in codebook
     values$codebook <- values$codebook[-whichRow,]
     renderCodebook()
     renderCounter()
     updateTextDisplay()
   })
+  
+  # Get column name in response to add button
+  observeEvent(input$addColumn, {
+    req(values$codebook)
+    showModal(modalDialog(
+      textInput("colName", "Name of new column in codebook:",
+                placeholder = "Notes"),
+      footer = tagList(modalButton("Cancel"),
+                       actionButton("addCol","OK"))))
+  })
+  
+  # Add column to codebook after getting name
+  observeEvent(input$addCol, {
+    req(values$codebook)
+    newColName = input$colName
+    values$codebook <- values$codebook %>% 
+      mutate(newColumn = as.character("")) %>%
+      rename_with(~ newColName, newColumn)
+    
+    removeModal()
+    renderCodebook()
+  })
+  
+  # Remove column name in response to add button
+  observeEvent(input$removeColumn, {
+    req(values$codebook)
+    showModal(modalDialog(
+      selectInput("minusCol", "Select which column to remove",
+                  choices = colnames(values$codebook)),
+      footer = tagList(modalButton("Cancel"),
+                       actionButton("minusColButton","OK"))))
+  })
+  
+  # Remove column to codebook after getting selection
+  observeEvent(input$minusColButton, {
+    req(values$codebook)
+    minusColName = input$minusCol
+    values$codebook <- values$codebook %>% 
+      select(-matches(paste0(minusColName)))
+    
+    removeModal()
+    renderCodebook()
+  })
+  
   
   # Save and apply rewording of code
   observeEvent(input$counterTable_cell_edit, {
@@ -379,7 +439,6 @@ server <- function(input, output, session) {
     
     # Replace strings in codebook
     values$codebook$Code[values$codebook$Code == oldValue] <- as.character(newValue)
-    
     renderCodebook()
   })
   

@@ -2,7 +2,7 @@
 # QualCA (pronounced like Quokka; not yet final)
 # Written by William Ngiam
 # Started on Sept 15 2024
-# Version 0.0.2 (Oct 3 2024)
+# Version 0.1.4 (Nov 10 2024)
 #
 # Motivated by the ANTIQUES project
 #
@@ -15,6 +15,7 @@
 # Floating menus?
 # Dealing with line breaks
 # Highlight extracts that are selected in the codebook
+# Radio button to define type of analysis
 # 
 # Glossary
 # Corpus: The body of text to be qualitatively analysed
@@ -25,6 +26,7 @@
 
 # Load required packages
 library(tools)
+library(pdftools)
 library(shiny)
 library(shinydashboard)
 library(shinyalert)
@@ -51,75 +53,93 @@ ui <- dashboardPage(
                    fluidPage(
                      HTML("<br>To use this app, upload your corpus CSV file using the button below. A menu will appear
               to select the column that contains the text to be coded.<br><br>
-           If you are returning to the app, you may upload your previously saved codebook by uploading using the button below.<br><br>
-           You may scroll through the documents by pressing the 'previous' and 'next' button, or typing in the numeric value into the bar.<br><br>
+           If you are returning to the app, you may resume by uploading your saved codebook using the button below.<br><br>
+           Scroll through the documents with the 'previous' and 'next' button, or typing in a numeric value into the bar.<br><br>
            To add an extract to the codebook, highlight the text in the document and press the 'Add Selected Text to Codebook' button. It will appear underneath
            the Extract column. You can then add a Code or Theme by double clicking on a cell within the codebook.<br><br>")),
-                   fileInput("corpusFile", "Add Corpus CSV File",
-                             accept = c("text/csv", "text/comma-separated-values,text/plain", ".csv")), # Upload the corpus of documents to-be-analysed
+                   fluidPage(HTML("<h3>Upload Files</h3>")),
+                   fileInput("corpusFile", "Load Corpus",
+                             accept = c("text/csv", "text/comma-separated-values,text/plain", ".csv", ".pdf", ".docx")), # Upload the corpus of documents to-be-analysed
                    uiOutput("documentTextSelector"),
-                   fileInput("codebookFile", "Add Codebook CSV File",
+                   fileInput("codebookFile", "Load Codebook",
                              accept = c("text/csv", "text/comma-separated-values,text/plain", ".csv")), # Upload any existing codebook
                    uiOutput("codebookSelector"),
-                   fluidPage("Download Codebook"),
+                   fluidPage(HTML("<h3>Download Codebook</h3>")),
                    fluidPage(downloadButton("downloadData",
                                             label = "Download Codebook")),
-                   HTML("<br>"),
-                   fluidPage("Created by William Ngiam")
+                   fluidPage(HTML("<br><h3>Pages</h3>")),
+                   sidebarMenu(
+                     menuItem("Coding", tabName = "coder", icon = icon("dashboard")),
+                     menuItem("Reviewing", icon = icon("th"), tabName = "reviewer")
+                   ),
+                   fluidPage(HTML("<br>Created by William Ngiam"))
   ),
   dashboardBody(
-    useShinyjs(),  # Initialize shinyjs
-    fluidRow(
-      box(title = "Document Viewer", width = 6, solidHeader = TRUE, status = "primary",
-          fluidPage(
-            fluidRow(
-              column(width = 5,
-                     numericInput(inputId = "documentID_viewer",
-                                  label = "Document #",
-                                  value = "currentDocumentID")),
-              column(width = 5,
-                     offset = 1,
-                     HTML("<strong>Document Navigation </strong><br>"),
-                     actionButton("prevDocument", "Previous"),
-                     actionButton("nextDocument", "Next")))),
-          bootstrapPage(
-            tags$style(
-              "#textDisplay {
-                    overflow-y: scroll;
-                    height: 40vh;
-                }"
-            ),
-            uiOutput("textDisplay"),
-            tags$script('
-                          function getSelectionText() {
-                            var text = "";
-                            if (window.getSelection) {
-                              text = window.getSelection().toString();
-                            } else if (document.selection) {
-                              text = document.selection.createRange().text;
-                            }
-                            return text;
-                          }
-                          
-                          document.onmouseup = document.onkeyup = document.onselectionchange = function() {
-                            var selection = getSelectionText();
-                            Shiny.onInputChange("extract",selection);
-                          };
-                          ')
-          )),
-      box(title = "Quick Look", width = 6, solidHeader = TRUE, status = "primary",
-          fluidPage(DTOutput("counterTable")
-          )
+    tabItems(
+      # The coding tab
+      tabItem(tabName = "coder",
+              useShinyjs(),  # Initialize shinyjs
+              fluidRow(
+                box(title = "Document Viewer", width = 6, solidHeader = TRUE, status = "primary",
+                    fluidPage(
+                      fluidRow(
+                        column(width = 5,
+                               numericInput(inputId = "documentID_viewer",
+                                            label = "Document #",
+                                            value = "currentDocumentID")),
+                        column(width = 5,
+                               offset = 1,
+                               HTML("<strong>Document Navigation </strong><br>"),
+                               actionButton("prevDocument", "Previous"),
+                               actionButton("nextDocument", "Next")))),
+                    bootstrapPage(
+                      tags$style(
+                        "#textDisplay {
+                        overflow-y: scroll;
+                        height: 40vh;
+                    }"
+                      ),
+                      uiOutput("textDisplay"),
+                      tags$script('
+                              function getSelectionText() {
+                                var text = "";
+                                if (window.getSelection) {
+                                  text = window.getSelection().toString();
+                                } else if (document.selection) {
+                                  text = document.selection.createRange().text;
+                                }
+                                return text;
+                              }
+                              
+                              document.onmouseup = document.onkeyup = document.onselectionchange = function() {
+                                var selection = getSelectionText();
+                                Shiny.onInputChange("extract",selection);
+                              };
+                              ')
+                    )),
+                box(title = "Quick Look", width = 6, solidHeader = TRUE, status = "primary",
+                    fluidPage(DTOutput("counterTable")
+                    )
+                ),
+              ),
+              fluidRow(
+                box(title = "Codebook", width = 12, solidHeader = TRUE, status = "primary",
+                    actionButton("addSelectedText", "Add Selected Text as Extract"),
+                    actionButton("deleteExtract", "Delete Extract from Codebook"),
+                    actionButton("addColumn", "Add Column to Codebook"),
+                    actionButton("removeColumn", "Remove Column from Codebook"),
+                    HTML("<br><br>"),
+                    DTOutput("codebookTable")))
       ),
-    ),
-    fluidRow(
-      box(title = "Codebook", width = 12, solidHeader = TRUE, status = "primary",
-          actionButton("addSelectedText", "Add Selected Text as Extract"),
-          actionButton("deleteExtract", "Delete Extract from Codebook"),
-          actionButton("addColumn", "Add Column to Codebook"),
-          actionButton("removeColumn", "Remove Column from Codebook"),
-          HTML("<br><br>"),
-          DTOutput("codebookTable")))
+      tabItem(tabName = "reviewer",
+              fluidRow(
+                box(title = "Codebook", width = 3, solidHeader = TRUE, status = "primary",
+                    DTOutput("codesTable")),
+                box(title = "Extracts", width = 9, solidHeader = TRUE, status = "primary",
+                    DTOutput("reviewTable"))
+              )
+      )
+    )
   )
 )
 
@@ -148,6 +168,9 @@ server <- function(input, output, session) {
     text <- values$corpus[[values$documentTextColumn]][values$currentDocumentIndex]
     #text <- sub("<span*/span>","",text) # Remove any leftover HTML
     text <- gsub(pattern = "\n", replacement = "", text) # Remove line breaks because they "break" the app...
+    text <- gsub(pattern = "\\s+", replacement = " ", text)
+    #text <- gsub(pattern = "\"", replacement = "'", text) # Replace double quotation marks with single ones.
+    textLength <- str_length(text)
     
     # Add highlights here by adding HTML tags to text
     # Retrieve document ID
@@ -211,13 +234,20 @@ server <- function(input, output, session) {
     }
     
     # Hope it works
-    output$textDisplay <- renderUI({
-      tags$div(id = "textDisplay",
-               tags$p(HTML(text), id = "currentText", style = "font-size: 20px"),
-               tags$script('
-                            lastString.scrollIntoView();
-                           '))
-    })
+    if (textLength >= 600) {
+      output$textDisplay <- renderUI({
+        tags$div(id = "textDisplay",
+                 tags$p(HTML(text), id = "currentText", style = "font-size: 20px"),
+                 tags$script('
+                              lastString.scrollIntoView();
+                             '))
+      })
+    } else {
+      output$textDisplay <- renderUI({
+        tags$div(id = "textDisplay",
+                 tags$p(HTML(text), id = "currentText", style = "font-size: 20px"))
+      })
+    }
   }
   
   # Update document viewer ID number
@@ -238,7 +268,11 @@ server <- function(input, output, session) {
   # Render codebook
   renderCodebook <- function() {
     output$codebookTable <- renderDT({
-      datatable(values$codebook, editable = TRUE, rownames = FALSE)
+      idColNum <- which(colnames(values$codebook) == "Document_ID")
+      datatable(values$codebook,
+                options = list(order = list(idColNum-1,'desc')),
+                editable = TRUE, 
+                rownames = FALSE)
     })
   }
   
@@ -248,6 +282,13 @@ server <- function(input, output, session) {
       count(Code, name = "Instances")
     
     output$counterTable <- renderDT({
+      datatable(values$counter, 
+                editable = list(target = "cell",
+                                disable = list(columns = 1)),
+                rownames = FALSE)
+    })
+    
+    output$codesTable <- renderDT({
       datatable(values$counter, 
                 editable = list(target = "cell",
                                 disable = list(columns = 1)),
@@ -263,6 +304,15 @@ server <- function(input, output, session) {
       values$corpus <- read.csv(input$corpusFile$datapath, stringsAsFactors = FALSE)
     } else if (file_ext(input$corpusFile$datapath) == "txt") {
       values$corpus <- read.delim(input$corpusFile$datapath, header = FALSE, sep = "\n")
+    } else if (file_ext(input$corpusFile$datapath) == "pdf") {
+      pdfDocumentText <- pdf_text(input$corpusFile$datapath)
+      values$corpus <- tibble(text = pdfDocumentText)
+    } else if (file_ext(input$corpusFile$datapath) == "docx") {
+      doc <- read_docx(input$corpusFile$datapath)
+      docContent <- docx_summary(doc) %>% 
+        filter(text != "")
+      values$corpus <- tibble(text = docContent$text)
+      
     }
     colnames <- colnames(values$corpus)
     values$documentTextColumn <- colnames[1]  # Default to the first column
@@ -351,10 +401,23 @@ server <- function(input, output, session) {
     req(values$codebook,input$extract)
     selectedText <- input$extract # Highlighted text within document to-be-extracted
     
+    # Detect any selected rows
+    #    if (nrow(values$counter) > 0) {
+    if (!is.null(input$counterTable_rows_selected)) {
+      selectedRow <- input$counterTable_rows_selected
+      allCodes <- values$counter$Code
+      selectedCode <- allCodes[selectedRow]
+    } else {
+      selectedCode = ""
+    }
+    #    } else {
+    #       selectedCode = ""
+    #   }
+    
     # Append the selected text to codebook as extract
     values$codebook <- values$codebook %>% 
       add_row(Theme = "",
-              Code = "",
+              Code = selectedCode,
               Extract = selectedText,
               Document_ID = values$currentDocumentIndex)
     
@@ -416,7 +479,6 @@ server <- function(input, output, session) {
     renderCodebook()
   })
   
-  
   # Save and apply rewording of code
   observeEvent(input$counterTable_cell_edit, {
     # Update counter
@@ -450,6 +512,33 @@ server <- function(input, output, session) {
     content = function(file) {
       write.csv(values$codebook, file, row.names = FALSE)
     }
+  )
+  
+  ## EXTRACT VIEWER
+  # Display all extracts related to a code
+  findExtracts <- function() {
+    # Get selected code
+    whichRow <- input$codesTable_rows_selected
+    allCodes <- values$counter$Code
+    selectedCode <- allCodes[whichRow]
+    
+    # Filter for relevant extracts
+    relevantExtracts <- values$codebook %>% 
+      dplyr::filter(grepl(paste(selectedCode,
+                                collapse = "|"),
+                          Code)) %>%
+      select(Extract)
+    
+    # Organise the display to show all extracts.
+    output$reviewTable <- renderDT({
+      datatable(relevantExtracts, 
+                rownames = FALSE)
+    })
+  }
+  # If reviewing tab selected
+  observeEvent(input$codesTable_rows_selected, {
+    findExtracts()
+  }
   )
 }
 

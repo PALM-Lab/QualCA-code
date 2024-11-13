@@ -66,7 +66,8 @@ ui <- dashboardPage(
                    uiOutput("codebookSelector"),
                    fluidPage(HTML("<h3>Download Codebook</h3>")),
                    fluidPage(downloadButton("downloadData",
-                                            label = "Download Codebook")),
+                                            label = "Download Codebook",
+                                            style = "color: black")),
                    fluidPage(HTML("<br><h3>Pages</h3>")),
                    sidebarMenu(
                      menuItem("Coding", tabName = "coder", icon = icon("dashboard")),
@@ -90,8 +91,8 @@ ui <- dashboardPage(
                         column(width = 5,
                                offset = 1,
                                HTML("<strong>Document Navigation </strong><br>"),
-                               actionButton("prevDocument", "Previous"),
-                               actionButton("nextDocument", "Next")))),
+                               actionButton("prevDocument", "Previous", icon = icon("arrow-left")),
+                               actionButton("nextDocument", "Next", icon = icon("arrow-right"))))),
                     bootstrapPage(
                       tags$style(
                         "#textDisplay {
@@ -123,11 +124,17 @@ ui <- dashboardPage(
                 ),
               ),
               fluidRow(
+                box(title = "Research Question(s)", width = 12, solidHeader = TRUE, status = "primary",
+                    textAreaInput("text",
+                                  "Enter your research question(s) below")
+                )
+              ),
+              fluidRow(
                 box(title = "Codebook", width = 12, solidHeader = TRUE, status = "primary",
-                    actionButton("addSelectedText", "Add Selected Text as Extract"),
-                    actionButton("deleteExtract", "Delete Extract from Codebook"),
-                    actionButton("addColumn", "Add Column to Codebook"),
-                    actionButton("removeColumn", "Remove Column from Codebook"),
+                    actionButton("addSelectedText", "Add Selected Text as Extract", icon = icon("pencil")),
+                    actionButton("deleteExtract", "Delete Extract from Codebook", icon = icon("trash")),
+                    actionButton("addColumn", "Add Column to Codebook", icon = icon("plus")),
+                    actionButton("removeColumn", "Remove Column from Codebook", icon = icon("minus")),
                     HTML("<br><br>"),
                     DTOutput("codebookTable")))
       ),
@@ -153,7 +160,8 @@ server <- function(input, output, session) {
     codebook = tibble(Theme = as.character(), 
                       Code = as.character(), 
                       Extract = as.character(), 
-                      Document_ID = as.numeric()),
+                      Document_ID = as.numeric(),
+                      Timestamp = as.character()),
     counter = data.frame(),
     currentDocumentIndex = 1,
     nDocuments = 1,
@@ -268,7 +276,7 @@ server <- function(input, output, session) {
   # Render codebook
   renderCodebook <- function() {
     output$codebookTable <- renderDT({
-      idColNum <- which(colnames(values$codebook) == "Document_ID")
+      idColNum <- which(colnames(values$codebook) == "Timestamp")
       datatable(values$codebook,
                 options = list(order = list(idColNum-1,'desc')),
                 editable = TRUE, 
@@ -419,7 +427,8 @@ server <- function(input, output, session) {
       add_row(Theme = "",
               Code = selectedCode,
               Extract = selectedText,
-              Document_ID = values$currentDocumentIndex)
+              Document_ID = values$currentDocumentIndex,
+              Timestamp = as.character(Sys.time()))
     
     renderCodebook()
     renderCounter()

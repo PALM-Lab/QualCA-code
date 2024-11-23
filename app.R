@@ -97,7 +97,7 @@ ui <- dashboardPage(
                       tags$style(
                         "#textDisplay {
                         overflow-y: scroll;
-                        height: 40vh;
+                        height: 42vh;
                     }"
                       ),
                       uiOutput("textDisplay"),
@@ -144,6 +144,10 @@ ui <- dashboardPage(
                     DTOutput("codesTable")),
                 box(title = "Extracts", width = 9, solidHeader = TRUE, status = "primary",
                     DTOutput("reviewTable"))
+              ),
+              fluidRow(
+                box(title = "Document Review", width = 12, solidHeader = TRUE, status = "primary",
+                    uiOutput("reviewDocumentText"))
               )
       )
     )
@@ -544,11 +548,66 @@ server <- function(input, output, session) {
                 rownames = FALSE)
     })
   }
+  
+  showDocument <- function() {
+    req(input$codesTable_rows_selected,input$reviewTable_rows_selected)
+    # Get selected codes
+    whichRow <- input$codesTable_rows_selected
+    allCodes <- values$counter$Code
+    selectedCode <- allCodes[whichRow]
+    
+    # Get selected extract
+    whichExtractRow <- input$reviewTable_rows_selected
+    whichExtractRow <- max(whichExtractRow) # in case multiple selected.
+    
+    # Filter for data
+    documentData <- values$codebook %>% 
+      dplyr::filter(grepl(paste(selectedCode,
+                                collapse = "|"),
+                          Code)) %>% 
+      select(Document_ID,Extract)
+    
+    # Find which document
+    allDocs <- documentData$Document_ID
+    selectedDocument <- allDocs[whichExtractRow]
+    documentText <- values$corpus[[values$documentTextColumn]][selectedDocument]
+    
+    # Find exact extract
+    allExtracts <- documentData$Extract
+    selectedExtract <- allExtracts[whichExtractRow]
+    
+    # Clean document text
+    documentText <- gsub(pattern = "\n", replacement = "", documentText) # Remove line breaks because they "break" the app...
+    documentText <- gsub(pattern = "\\s+", replacement = " ", documentText)
+    
+    # Find location of matches
+    stringEnds <- as.data.frame(str_locate(documentText,paste0("\\Q",selectedExtract,"\\E")))
+    
+    # Replace with highlight HTML
+    stringBegin <- stringEnds$start
+    stringFinish <- stringEnds$end
+    str_sub(documentText,stringBegin,stringFinish) <- paste0("<span style=\"background-color: powderblue\">",selectedExtract,"</span>")
+    
+    output$reviewDocumentText <- renderUI({
+      tags$div(id = "reviewDocumentText",
+               tags$p(HTML(documentText), id = "currentDocumentText", style = "font-size: 20px"))
+    })
+    
+  }
+  
   # If reviewing tab selected
   observeEvent(input$codesTable_rows_selected, {
     findExtracts()
   }
   )
+  
+  observeEvent(input$reviewTable_rows_selected, {
+    req(input$codesTable_rows_selected)
+    showDocument()
+  }
+  )
+  
+  
 }
 
 shinyApp(ui, server)

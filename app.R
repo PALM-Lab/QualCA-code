@@ -2,7 +2,7 @@
 # QualCA (pronounced like Quokka; not yet final)
 # Written by William Ngiam
 # Started on Sept 15 2024
-# Version 0.1.4 (Nov 10 2024)
+# Version 0.1.4 (Dec 13 2024)
 #
 # Motivated by the ANTIQUES project
 #
@@ -14,8 +14,9 @@
 # Collaborative coding <- maybe a google sheet that contains code/extracts...
 # Floating menus?
 # Dealing with line breaks
-# Highlight extracts that are selected in the codebook
-# Radio button to define type of analysis
+# Audit trail page - running commentary/notes
+# Automatic sending to OSF project
+# "Stats" tab <- Number of extracts, number of documents coded
 # 
 # Glossary
 # Corpus: The body of text to be qualitatively analysed
@@ -36,6 +37,7 @@ library(tibble)
 library(dplyr) # for data wrangling
 library(readr)
 library(stringr) # for handling strings
+library(markdown)
 
 # Workaround for Chromium Issue 468227
 # Copied from https://shinylive.io/r/examples/#r-file-download
@@ -50,13 +52,6 @@ ui <- dashboardPage(
   dashboardHeader(title = "QualCA - Qualitative Coding App",
                   titleWidth = 350),
   dashboardSidebar(width = 350,
-                   fluidPage(
-                     HTML("<br>To use this app, upload your corpus CSV file using the button below. A menu will appear
-              to select the column that contains the text to be coded.<br><br>
-           If you are returning to the app, you may resume by uploading your saved codebook using the button below.<br><br>
-           Scroll through the documents with the 'previous' and 'next' button, or typing in a numeric value into the bar.<br><br>
-           To add an extract to the codebook, highlight the text in the document and press the 'Add Selected Text to Codebook' button. It will appear underneath
-           the Extract column. You can then add a Code or Theme by double clicking on a cell within the codebook.<br><br>")),
                    fluidPage(HTML("<h3>Upload Files</h3>")),
                    fileInput("corpusFile", "Load Corpus",
                              accept = c("text/csv", "text/comma-separated-values,text/plain", ".csv", ".pdf", ".docx")), # Upload the corpus of documents to-be-analysed
@@ -70,6 +65,7 @@ ui <- dashboardPage(
                                             style = "color: black")),
                    fluidPage(HTML("<br><h3>Pages</h3>")),
                    sidebarMenu(
+                     menuItem("Home", tabName = "home", icon = icon("home")),
                      menuItem("Coding", tabName = "coder", icon = icon("dashboard")),
                      menuItem("Reviewing", icon = icon("th"), tabName = "reviewer")
                    ),
@@ -77,6 +73,13 @@ ui <- dashboardPage(
   ),
   dashboardBody(
     tabItems(
+      # The home tab
+      tabItem(tabName = "home",
+              useShinyjs(), #Initialize shinyjs
+              box(title = "Home", width = 12, solidHeader = TRUE, status = "primary",
+                  fluidPage(
+                    includeHTML("home_text.html")))
+      ),
       # The coding tab
       tabItem(tabName = "coder",
               useShinyjs(),  # Initialize shinyjs
@@ -454,6 +457,7 @@ server <- function(input, output, session) {
     req(values$codebook)
     showModal(modalDialog(
       textInput("colName", "Name of new column in codebook:",
+                value = "Notes",
                 placeholder = "Notes"),
       footer = tagList(modalButton("Cancel"),
                        actionButton("addCol","OK"))))
@@ -463,6 +467,9 @@ server <- function(input, output, session) {
   observeEvent(input$addCol, {
     req(values$codebook)
     newColName = input$colName
+    if (newColName == "") {
+      newColName = "New column"
+    }
     values$codebook <- values$codebook %>% 
       mutate(newColumn = as.character("")) %>%
       rename_with(~ newColName, newColumn)
